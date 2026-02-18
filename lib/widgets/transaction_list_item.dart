@@ -36,12 +36,12 @@ class TransactionListItem extends StatelessWidget {
         return await showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Delete Transaction?', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold)),
+            title: const Text('Delete Transaction?', style: TextStyle( fontWeight: FontWeight.bold)),
             content: const Text('Are you sure you want to delete this transaction?', style: TextStyle(fontFamily: 'Inter')),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Cancel', style: TextStyle(fontFamily: 'Inter', color: AppColors.textSecondary)),
+                child: const Text('Cancel', style: TextStyle( color: AppColors.textSecondary)),
               ),
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(true),
@@ -78,7 +78,7 @@ class TransactionListItem extends StatelessWidget {
           ),
           title: Text(
             transaction.title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Inter', color: AppColors.textPrimary),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16,  color: AppColors.textPrimary),
           ),
           subtitle: Text(
             dateFormat.format(transaction.date),
@@ -90,7 +90,7 @@ class TransactionListItem extends StatelessWidget {
               color: transaction.isExpense ? AppColors.danger : AppColors.success,
               fontWeight: FontWeight.bold,
               fontSize: 16,
-              fontFamily: 'Inter',
+              
             ),
           ),
         ),

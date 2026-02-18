@@ -13,9 +13,219 @@ import 'all_transactions_screen.dart';
 import 'budget_trends_screen.dart';
 import 'budget_pdf_preview_screen.dart';
 import '../services/pdf_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/notification_service.dart';
 
-class HomeScreen extends StatelessWidget {
+import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:budget_tracker/widgets/crop_image_dialog.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  TimeOfDay? _reminderTime;
+
+  @override
+  void initState() {
+    super.initState();
+    _requestPermissions();
+    _loadReminderTime();
+  }
+
+  Future<void> _loadReminderTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hour = prefs.getInt('reminder_hour');
+    final minute = prefs.getInt('reminder_minute');
+    if (hour != null && minute != null) {
+      setState(() {
+        _reminderTime = TimeOfDay(hour: hour, minute: minute);
+      });
+    }
+  }
+
+  Future<void> _saveReminderTime(TimeOfDay time) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('reminder_hour', time.hour);
+    await prefs.setInt('reminder_minute', time.minute);
+    setState(() {
+      _reminderTime = time;
+    });
+    final username = Provider.of<UserProvider>(context, listen: false).username;
+    await NotificationService().scheduleDailyNotification(time, username);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Daily reminder set for ${time.format(context)}')),
+      );
+    }
+  }
+
+  Future<void> _clearReminder() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('reminder_hour');
+    await prefs.remove('reminder_minute');
+    setState(() {
+      _reminderTime = null;
+    });
+    await NotificationService().cancelNotifications();
+    if (mounted) {
+       ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Daily reminder disabled')),
+      );
+    }
+  }
+
+  Future<void> _pickImage() async {
+    // Step 1: Ask user to pick source
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Select Photo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFE8F5E9),
+                  child: Icon(Icons.photo_library_rounded, color: Colors.green),
+                ),
+                title: const Text('Choose from Gallery'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+              if (!kIsWeb)
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFE3F2FD),
+                    child: Icon(Icons.camera_alt_rounded, color: Colors.blue),
+                  ),
+                  title: const Text('Take a Photo'),
+                  subtitle: const Text('Mobile only'),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    // Step 2: Pick image from selected source
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: source, imageQuality: 90);
+    if (pickedFile == null) return;
+
+    // Step 3: Read bytes and show custom crop dialog
+    final bytes = await pickedFile.readAsBytes();
+    if (!mounted) return;
+
+    final croppedBytes = await showDialog<Uint8List>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => CropImageDialog(imageBytes: bytes),
+    );
+
+    if (croppedBytes != null && mounted) {
+      await Provider.of<UserProvider>(context, listen: false)
+          .setProfileImageBytes(croppedBytes);
+    }
+  }
+
+  Future<void> _handleReminderTap() async {
+    if (_reminderTime == null) {
+      await _pickReminderTime();
+    } else {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Daily Reminder'),
+          content: Text('Reminder currently set for ${_reminderTime!.format(context)}'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _clearReminder();
+              },
+              style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+              child: const Text('Clear Reminder'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _pickReminderTime();
+              },
+              child: const Text('Change Time'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickReminderTime() async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _reminderTime ?? const TimeOfDay(hour: 20, minute: 0),
+    );
+    if (picked != null) {
+      await _saveReminderTime(picked);
+    }
+  }
+
+  Future<void> _requestPermissions() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+         await Permission.notification.request();
+      } else {
+        // Android < 13
+        var status = await Permission.storage.status;
+        if (!status.isGranted) {
+          await Permission.storage.request();
+        }
+      }
+    }
+  }
+
+  String _getGreetingEmoji() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return '☀️';
+    if (hour < 17) return '🌤️';
+    return '🌙';
+  }
+
+  ImageProvider? _getProfileImage(UserProvider user) {
+    // On web, prefer bytes (MemoryImage) over path
+    if (kIsWeb) {
+      if (user.profileImageBytes != null) {
+        return MemoryImage(user.profileImageBytes!);
+      }
+      return null;
+    }
+    if (user.profileImagePath.isEmpty) return null;
+    return FileImage(File(user.profileImagePath));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +243,40 @@ class HomeScreen extends StatelessWidget {
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
         backgroundColor: AppColors.background,
+        drawer: Drawer(
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+               UserAccountsDrawerHeader(
+                decoration: const BoxDecoration(color: AppColors.primary),
+                accountName: Text(Provider.of<UserProvider>(context).username, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+                accountEmail: const Text('Keep tracking your expenses!'),
+                currentAccountPicture: Consumer<UserProvider>(
+                  builder: (context, user, child) {
+                    final imageProvider = _getProfileImage(user);
+                    return GestureDetector(
+                      onTap: _pickImage,
+                      child: CircleAvatar(
+                        backgroundColor: AppColors.background,
+                        backgroundImage: imageProvider,
+                        child: imageProvider == null
+                            ? const Icon(Icons.person, size: 40, color: AppColors.primary)
+                            : null,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              ListTile(
+                 leading: const Icon(Icons.notifications_active_outlined, color: AppColors.textPrimary),
+                 title: const Text('Daily Expense Reminder', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+                 subtitle: Text(_reminderTime != null ? 'Set for ${_reminderTime!.format(context)}' : 'Not set', style: const TextStyle(color: AppColors.textSecondary)),
+                 trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.textSecondary),
+                 onTap: _handleReminderTap,
+              ),
+            ],
+          ),
+        ),
         body: Stack(
           children: [
             // 2. Content
@@ -45,31 +289,78 @@ class HomeScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            greeting,
-                            style: TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 16,
-                              fontFamily: 'Inter',
-                            ),
+                      // Profile Avatar
+                      Builder(
+                        builder: (context) => GestureDetector(
+                          onTap: () => Scaffold.of(context).openDrawer(),
+                          child: Consumer<UserProvider>(
+                            builder: (context, user, child) {
+                                final imageProvider = _getProfileImage(user);
+                              return Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.primary.withValues(alpha: 0.2),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: CircleAvatar(
+                                  radius: 26,
+                                  backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+                                  backgroundImage: imageProvider,
+                                  child: imageProvider == null
+                                      ? const Icon(Icons.person_rounded, size: 28, color: AppColors.primary)
+                                      : null,
+                                ),
+                              );
+                            },
                           ),
-                          const SizedBox(height: AppSpacing.xs),
-                          Text(
-                            Provider.of<UserProvider>(context).username,
-                            style: TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'Inter',
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
+                      const SizedBox(width: AppSpacing.md),
+                      // Greeting Text
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  greeting,
+                                  style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _getGreetingEmoji(),
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              Provider.of<UserProvider>(context).username,
+                              style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Add Budget Button
                       Container(
                         decoration: BoxDecoration(
                           color: AppColors.primary.withValues(alpha: 0.1),
@@ -109,7 +400,7 @@ class HomeScreen extends StatelessWidget {
                                   const SizedBox(height: AppSpacing.md),
                                   Text(
                                     'No budgets yet',
-                                    style: TextStyle(color: AppColors.textPrimary, fontFamily: 'Inter', fontWeight: FontWeight.bold, fontSize: 18),
+                                    style: TextStyle(color: AppColors.textPrimary,  fontWeight: FontWeight.bold, fontSize: 18),
                                   ),
                                   const SizedBox(height: AppSpacing.xs),
                                   Text(
@@ -154,7 +445,7 @@ class HomeScreen extends StatelessWidget {
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary,
-                          fontFamily: 'Inter',
+                          
                         ),
                       ),
                       TextButton(
@@ -226,7 +517,7 @@ class HomeScreen extends StatelessWidget {
                                ),
                                title: Text(
                                  transaction.title,
-                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Inter', color: AppColors.textPrimary),
+                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16,  color: AppColors.textPrimary),
                                ),
                                subtitle: Text(
                                  DateFormat('MMM d, y').format(transaction.date),
@@ -238,7 +529,7 @@ class HomeScreen extends StatelessWidget {
                                    fontWeight: FontWeight.bold,
                                    fontSize: 16,
                                    color: transaction.isExpense ? AppColors.danger : AppColors.success,
-                                   fontFamily: 'Inter',
+                                   
                                  ),
                                ),
                                onTap: () {
@@ -284,7 +575,7 @@ class HomeScreen extends StatelessWidget {
               children: [
                 Text(
                   'New Budget',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontFamily: 'Inter', fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith( fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -376,7 +667,11 @@ class _BudgetCard extends StatelessWidget {
     final provider = Provider.of<BudgetProvider>(context, listen: false);
     final currencySymbol = provider.getCurrencySymbol(budget.currency);
     final currencyFormat = NumberFormat.currency(locale: 'en_US', symbol: currencySymbol); 
-    final progress = budget.budget > 0 ? (budget.totalExpenses / (budget.budget + budget.totalIncome)).clamp(0.0, 1.0) : 0.0;
+    // Calculate raw progress (can > 1.0)
+    final totalBudget = budget.budget + budget.totalIncome;
+    final rawProgress = totalBudget > 0 ? (budget.totalExpenses / totalBudget) : 0.0;
+    // Clamped progress for UI elements (0.0 - 1.0)
+    final clampedProgress = rawProgress.clamp(0.0, 1.0);
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -413,7 +708,7 @@ class _BudgetCard extends StatelessWidget {
                           color: AppColors.textSecondary,
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
-                          fontFamily: 'Inter',
+                          
                         ),
                       ),
                       const SizedBox(height: AppSpacing.xs),
@@ -423,7 +718,7 @@ class _BudgetCard extends StatelessWidget {
                           color: AppColors.textPrimary,
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
-                          fontFamily: 'Inter',
+                          
                         ),
                       ),
                     ],
@@ -469,7 +764,7 @@ class _BudgetCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: AppColors.background,
                         borderRadius: BorderRadius.circular(AppRadius.md),
-                      ),
+                        ),
                       child: const Icon(Icons.more_horiz, color: AppColors.primaryLight),
                     ),
                   ),
@@ -488,15 +783,15 @@ class _BudgetCard extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                           fontSize: 24, // Increased size from 20 to 24
                           color: AppColors.primary, // Primary color
-                          fontFamily: 'Inter',
+                          
                         ),
                       ),
                       Text(
-                        '${((progress) * 100).toStringAsFixed(0)}%',
+                        '${((clampedProgress) * 100).toStringAsFixed(0)}%',
                         style: TextStyle( // Removed const to allow dynamic color if needed, though accent is fine
                           fontWeight: FontWeight.bold,
-                          color: _getProgressColor(progress), // Match progress color
-                          fontFamily: 'Inter',
+                          color: _getProgressColor(rawProgress), // Match progress color
+                          
                         ),
                       ),
                     ],
@@ -505,20 +800,20 @@ class _BudgetCard extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: LinearProgressIndicator(
-                      value: progress,
+                      value: clampedProgress,
                       backgroundColor: AppColors.progressBackground,
-                      valueColor: AlwaysStoppedAnimation<Color>(_getProgressColor(progress)),
+                      valueColor: AlwaysStoppedAnimation<Color>(_getProgressColor(rawProgress)),
                       minHeight: 8,
                     ),
                   ),
                   const SizedBox(height: AppSpacing.sm),
                    Text(
-                    _getStatusText(progress), 
+                    _getStatusText(rawProgress), 
                     style: TextStyle(
-                      color: _getProgressColor(progress), // Match color for emphasis? Or keep secondary? Let's use color.
+                      color: _getProgressColor(rawProgress), // Match color for emphasis? Or keep secondary? Let's use color.
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      fontFamily: 'Inter',
+                      
                     ),
                   ),
                 ],
@@ -531,22 +826,28 @@ class _BudgetCard extends StatelessWidget {
   }
 
   Color _getProgressColor(double progress) {
-    if (progress > 0.8) {
-      return AppColors.danger; // Red
+    if (progress > 1.0) {
+      return AppColors.dangerDark; // Dark Red (> 100%)
+    } else if (progress >= 1.0) {
+      return AppColors.danger; // Light Red (100% - Limit Reached)
+    } else if (progress > 0.8) {
+      return AppColors.danger; // Light Red (80% - 99%)
     } else if (progress > 0.5) {
-      return Colors.amber; // Yellow/Amber
+      return AppColors.warning; // Orange/Yellow (50% - 80%)
     } else {
-      return AppColors.success; // Green
+      return AppColors.success; // Green (<= 50%)
     }
   }
 
   String _getStatusText(double progress) {
     if (progress > 1.0) {
-      return "Critical: Budget exceeded!";
+      return "Critical: You've exceeded your budget!";
+    } else if (progress >= 1.0) {
+       return "Limit Reached: You've hit 100% of your budget.";
     } else if (progress > 0.8) {
-      return "Warning: You are approaching your limit.";
+      return "Alert: You are nearing your budget limit.";
     } else if (progress > 0.5) {
-      return "On track, but keep an eye on expenses.";
+      return "Heads up: You've used over 50% of your budget.";
     } else {
       return "Excellent! Spending is well under control.";
     }

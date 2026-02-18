@@ -1,7 +1,11 @@
 import 'dart:typed_data';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:pdf/pdf.dart';
 import '../models/budget.dart';
 import '../services/pdf_service.dart';
@@ -17,17 +21,50 @@ class BudgetPdfPreviewScreen extends StatelessWidget {
     required this.currencySymbol,
   });
 
-  Future<void> _downloadPdf(BuildContext context) async {
+  Future<void> _savePdfToStorage(BuildContext context) async {
     try {
       final bytes = await PdfService.buildPdf(PdfPageFormat.a4, budget, currencySymbol);
-      await Printing.sharePdf(
-        bytes: bytes,
-        filename: '${budget.name.replaceAll(' ', '_')}_report.pdf',
-      );
+      final fileName = '${budget.name.replaceAll(' ', '_')}_report.pdf';
+      
+      if (kIsWeb) {
+         await Printing.sharePdf(bytes: bytes, filename: fileName);
+         return;
+      }
+
+      Directory? directory;
+      if (Platform.isAndroid) {
+        // Try to get public Download directory
+        directory = Directory('/storage/emulated/0/Download');
+        if (!await directory.exists()) {
+          directory = await getExternalStorageDirectory();
+        }
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      final file = File('${directory?.path}/$fileName');
+      await file.writeAsBytes(bytes);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Saved to ${file.path}'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OPEN',
+              textColor: Colors.white,
+              onPressed: () => OpenFile.open(file.path),
+            ),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error downloading PDF: $e'), backgroundColor: Colors.red),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving PDF: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -49,7 +86,7 @@ class BudgetPdfPreviewScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Budget Report', style: TextStyle(color: AppColors.textPrimary, fontFamily: 'Inter', fontWeight: FontWeight.bold)),
+        title: const Text('Budget Report', style: TextStyle(color: AppColors.textPrimary,  fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -89,7 +126,7 @@ class BudgetPdfPreviewScreen extends StatelessWidget {
                 width: 250,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: () => _downloadPdf(context),
+                  onPressed: () => _savePdfToStorage(context),
                   icon: const Icon(Icons.download_rounded, color: Colors.white),
                   label: const Text('Download PDF', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                   style: ElevatedButton.styleFrom(

@@ -17,7 +17,9 @@ class AppColors {
 
   // Status colors
   static const Color success = Color(0xFF9CCC65);     // Light Green
+  static const Color warning = Color(0xFFFFB74D);     // Orange/Yellow (Material Orange 300)
   static const Color danger = Color(0xFFEF5350);      // Light Red
+  static const Color dangerDark = Color(0xFFC62828);  // Dark Red (Material Red 800)
 
   // Border and divider
   static const Color border = Color(0xFFEFEBE9);      // Light Brown ish

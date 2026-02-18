@@ -6,6 +6,7 @@ import 'providers/user_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'theme/app_theme.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +19,8 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+  await NotificationService().init();
   
   final userProvider = UserProvider();
   await userProvider.loadUserData();

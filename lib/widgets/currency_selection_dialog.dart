@@ -39,7 +39,7 @@ class _CurrencySelectionDialogState extends State<CurrencySelectionDialog> {
           children: [
             Text(
               'Select Currency',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontFamily: 'Inter', fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith( fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.md),
@@ -71,8 +71,8 @@ class _CurrencySelectionDialogState extends State<CurrencySelectionDialog> {
                     itemBuilder: (ctx, index) {
                       final entry = entries[index];
                       return ListTile(
-                        title: Text(entry.key, style: const TextStyle(fontFamily: 'Inter', color: AppColors.textPrimary)),
-                        subtitle: Text(entry.value, style: const TextStyle(fontFamily: 'Inter', color: AppColors.textSecondary)),
+                        title: Text(entry.key, style: const TextStyle( color: AppColors.textPrimary)),
+                        subtitle: Text(entry.value, style: const TextStyle( color: AppColors.textSecondary)),
                         onTap: () {
                           widget.onSelect(entry.key, entry.value);
                           Navigator.pop(context);

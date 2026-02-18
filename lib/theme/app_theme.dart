@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'design_system.dart';
 
 class AppTheme {
@@ -6,7 +7,8 @@ class AppTheme {
     useMaterial3: true,
     brightness: Brightness.light, 
     scaffoldBackgroundColor: AppColors.background,
-    fontFamily: 'Inter',
+    fontFamily: GoogleFonts.inter().fontFamily,
+    textTheme: GoogleFonts.interTextTheme(),
     colorScheme: const ColorScheme.light(
       primary: AppColors.primary,
       secondary: AppColors.accent,
@@ -16,13 +18,12 @@ class AppTheme {
       onSecondary: AppColors.textLight,
       onSurface: AppColors.textPrimary,
     ),
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: AppColors.background,
       foregroundColor: AppColors.textPrimary,
       elevation: 0,
       centerTitle: true,
-      titleTextStyle: TextStyle(
-        fontFamily: 'Inter', 
+      titleTextStyle: GoogleFonts.inter(
         fontSize: 20, 
         fontWeight: FontWeight.w600,
         color: AppColors.textPrimary,
@@ -50,7 +51,7 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
         ),
-        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontFamily: 'Inter'),
+        textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
         elevation: 0,
       ),
     ),
@@ -81,12 +82,6 @@ class AppTheme {
       ),
       labelStyle: const TextStyle(color: AppColors.textSecondary),
       hintStyle: const TextStyle(color: AppColors.textSecondary),
-    ),
-    textTheme: const TextTheme(
-      headlineLarge: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 24),
-      titleLarge: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 20),
-      bodyLarge: TextStyle(color: AppColors.textPrimary, fontSize: 16),
-      bodyMedium: TextStyle(color: AppColors.textSecondary, fontSize: 14),
     ),
     iconTheme: const IconThemeData(
       color: AppColors.primary,

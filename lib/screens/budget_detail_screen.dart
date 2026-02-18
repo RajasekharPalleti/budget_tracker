@@ -9,10 +9,50 @@ import '../widgets/transaction_list_item.dart';
 import '../widgets/currency_selection_dialog.dart';
 import '../theme/design_system.dart';
 
-class BudgetDetailScreen extends StatelessWidget {
+class BudgetDetailScreen extends StatefulWidget {
   final String budgetId;
 
   const BudgetDetailScreen({super.key, required this.budgetId});
+
+  @override
+  State<BudgetDetailScreen> createState() => _BudgetDetailScreenState();
+}
+
+class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
+  String _searchQuery = '';
+  String _selectedType = 'All'; // All, Expense, Income
+  DateTimeRange? _customDateRange;
+
+  void _showCustomDateRangePicker() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now.add(const Duration(days: 365)), // Allow future dates? Transaction dates might be future? Usually past/present. Let's say up to 1 year future just in case.
+      initialDateRange: _customDateRange ?? DateTimeRange(
+        start: now.subtract(const Duration(days: 30)), 
+        end: now
+      ),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: AppColors.textLight,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _customDateRange = picked;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,10 +61,10 @@ class BudgetDetailScreen extends StatelessWidget {
         // Find the budget safely
         Budget? budget;
         try {
-          budget = provider.budgets.firstWhere((b) => b.id == budgetId);
+          budget = provider.budgets.firstWhere((b) => b.id == widget.budgetId);
         } catch (e) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-             Navigator.of(context).pop();
+             if (mounted) Navigator.of(context).pop();
           });
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
@@ -32,12 +72,36 @@ class BudgetDetailScreen extends StatelessWidget {
         final currencySymbol = provider.getCurrencySymbol(budget!.currency);
         final currencyFormat = NumberFormat.currency(locale: 'en_US', symbol: currencySymbol);
 
+        // Filter Logic
+        final filteredTransactions = budget.transactions.where((t) {
+          // Search
+          if (_searchQuery.isNotEmpty && !t.title.toLowerCase().contains(_searchQuery.toLowerCase())) {
+            return false;
+          }
+
+          // Type
+          if (_selectedType == 'Expense' && !t.isExpense) return false;
+          if (_selectedType == 'Income' && t.isExpense) return false;
+
+          // Date (Custom Only)
+          if (_customDateRange != null) {
+            final start = DateTime(_customDateRange!.start.year, _customDateRange!.start.month, _customDateRange!.start.day);
+            final end = DateTime(_customDateRange!.end.year, _customDateRange!.end.month, _customDateRange!.end.day, 23, 59, 59);
+             if (t.date.isBefore(start) || t.date.isAfter(end)) return false;
+          }
+
+          return true;
+        }).toList();
+
+        // Sort
+        filteredTransactions.sort((a, b) => b.date.compareTo(a.date));
+
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: SystemUiOverlayStyle.dark, // Dark icons for light background
           child: Scaffold(
           backgroundColor: AppColors.background,
           appBar: AppBar(
-            title: Text(budget.name, style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold)),
+            title: Text(budget.name, style: const TextStyle( fontWeight: FontWeight.bold)),
             backgroundColor: AppColors.background,
             elevation: 0,
             iconTheme: const IconThemeData(color: AppColors.textPrimary),
@@ -54,31 +118,99 @@ class BudgetDetailScreen extends StatelessWidget {
           ),
           body: Column(
             children: [
-              _buildSummaryCard(context, budget!, currencyFormat),
+              _buildSummaryCard(context, budget, currencyFormat),
+              
+              // Budget Status Message
+              _buildBudgetStatusMessage(context, budget),
+
+              // Search and Filters Row
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+                child: Row(
+                  children: [
+                    // Search Bar
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Search...',
+                          hintStyle: const TextStyle(color: AppColors.textSecondary),
+                          prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary, size: 20),
+                          filled: true,
+                          fillColor: AppColors.cardBackground,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.lg),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 0),
+                          isDense: true,
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            _searchQuery = value;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+
+                    // Filters
+                    Expanded(
+                      flex: 3,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildFilterChip('All', _selectedType == 'All', () => setState(() => _selectedType = 'All')),
+                            const SizedBox(width: AppSpacing.sm),
+                            _buildFilterChip('Expense', _selectedType == 'Expense', () => setState(() => _selectedType = _selectedType == 'Expense' ? 'All' : 'Expense')),
+                            const SizedBox(width: AppSpacing.sm),
+                            _buildFilterChip('Income', _selectedType == 'Income', () => setState(() => _selectedType = _selectedType == 'Income' ? 'All' : 'Income')),
+                            const SizedBox(width: AppSpacing.md),
+                             _buildFilterChip(
+                              _customDateRange == null ? 'Date' : '${DateFormat('MM/dd').format(_customDateRange!.start)}-${DateFormat('MM/dd').format(_customDateRange!.end)}', 
+                              _customDateRange != null, 
+                              () {
+                                 if (_customDateRange != null) {
+                                   setState(() => _customDateRange = null); 
+                                 } else {
+                                   _showCustomDateRangePicker();
+                                 }
+                              }
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+
               Expanded(
-                child: budget!.transactions.isEmpty
+                child: filteredTransactions.isEmpty
                     ? Center(
-                        child: Text(
-                          'No transactions yet',
-                          style: TextStyle(color: AppColors.textSecondary, fontFamily: 'Inter'),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              'No transactions found',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
+                          ],
                         ),
                       )
-                    : Builder(
-                        builder: (context) {
-                          final sortedTransactions = List<Transaction>.from(budget!.transactions)
-                            ..sort((a, b) => b.date.compareTo(a.date));
-                          
-                          return ListView.builder(
+                    : ListView.builder(
                             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
-                            itemCount: sortedTransactions.length,
+                            itemCount: filteredTransactions.length,
                             itemBuilder: (context, index) {
-                              final transaction = sortedTransactions[index];
+                              final transaction = filteredTransactions[index];
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                                 child: TransactionListItem(
                                   transaction: transaction,
                                   onDelete: () {
-                                    provider.deleteTransaction(budgetId, transaction.id);
+                                    provider.deleteTransaction(widget.budgetId, transaction.id);
                                   },
                                   onEdit: () {
                                     _showAddTransactionDialog(
@@ -92,20 +224,50 @@ class BudgetDetailScreen extends StatelessWidget {
                                 ),
                               );
                             },
-                          );
-                        },
-                      ),
+                          ),
                   ),
             ],
           ),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => _showAddOptions(context, currencySymbol),
             icon: const Icon(Icons.add), // Color from theme
-            label: const Text('Add', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold)),
+            label: const Text('Add', style: TextStyle( fontWeight: FontWeight.bold)),
             backgroundColor: AppColors.accent,
           ),
         ));
       },
+    );
+  }
+
+   Widget _buildFilterChip(String label, bool isSelected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        child: Row( // Added Row to handle potential clear icon if needed, or just text
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? AppColors.textLight : AppColors.textSecondary,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontSize: 13,
+              ),
+            ),
+             if (isSelected && label != 'All' && label != 'Expense' && label != 'Income') ...[
+                const SizedBox(width: 4),
+                Icon(Icons.close, size: 14, color: AppColors.textLight),
+             ]
+          ],
+        ),
+      ),
     );
   }
 
@@ -125,7 +287,7 @@ class BudgetDetailScreen extends StatelessWidget {
               backgroundColor: AppColors.success.withValues(alpha: 0.1),
               child: const Icon(Icons.arrow_upward, color: AppColors.success),
             ),
-            title: const Text('Add Income', style: TextStyle(fontFamily: 'Inter', color: AppColors.textPrimary)),
+            title: const Text('Add Income', style: TextStyle( color: AppColors.textPrimary)),
             onTap: () {
               Navigator.pop(ctx);
               _showAddTransactionDialog(context, isExpense: false, currencySymbol: currencySymbol);
@@ -136,7 +298,7 @@ class BudgetDetailScreen extends StatelessWidget {
               backgroundColor: AppColors.danger.withValues(alpha: 0.1),
               child: const Icon(Icons.arrow_downward, color: AppColors.danger),
             ),
-            title: const Text('Add Expense', style: TextStyle(fontFamily: 'Inter', color: AppColors.textPrimary)),
+            title: const Text('Add Expense', style: TextStyle( color: AppColors.textPrimary)),
             onTap: () {
               Navigator.pop(ctx);
               _showAddTransactionDialog(context, isExpense: true, currencySymbol: currencySymbol);
@@ -187,7 +349,7 @@ class BudgetDetailScreen extends StatelessWidget {
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: isExpense ? AppColors.danger : AppColors.success,
-                  fontFamily: 'Inter',
+                  
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -232,7 +394,7 @@ class BudgetDetailScreen extends StatelessWidget {
                   ),
                   child: Text(
                     DateFormat('MMM d, y').format(selectedDate),
-                    style: const TextStyle(fontFamily: 'Inter', color: AppColors.textPrimary),
+                    style: const TextStyle( color: AppColors.textPrimary),
                   ),
                 ),
               ),
@@ -257,7 +419,7 @@ class BudgetDetailScreen extends StatelessWidget {
                         date: selectedDate,
                         isExpense: isExpense,
                       );
-                      provider.updateTransaction(budgetId, updatedTransaction);
+                      provider.updateTransaction(widget.budgetId, updatedTransaction);
                     } else {
                       final transaction = Transaction(
                         title: title,
@@ -265,14 +427,14 @@ class BudgetDetailScreen extends StatelessWidget {
                         date: selectedDate,
                         isExpense: isExpense,
                       );
-                      provider.addTransaction(budgetId, transaction);
+                      provider.addTransaction(widget.budgetId, transaction);
                     }
                     Navigator.pop(ctx);
                   }
                 },
                 child: Text(
                   existingTransaction != null ? 'Update' : 'Add Transaction', 
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Inter'),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
               const SizedBox(height: AppSpacing.lg),
@@ -302,7 +464,6 @@ class BudgetDetailScreen extends StatelessWidget {
               fontSize: 14,
               letterSpacing: 1.0,
               fontWeight: FontWeight.w500,
-              fontFamily: 'Inter',
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -313,7 +474,6 @@ class BudgetDetailScreen extends StatelessWidget {
               fontSize: 36,
               fontWeight: FontWeight.bold,
               letterSpacing: -0.5,
-              fontFamily: 'Inter',
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
@@ -346,7 +506,7 @@ class BudgetDetailScreen extends StatelessWidget {
               children: [
                 const Text(
                   'Initial Budget', 
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontFamily: 'Inter'),
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
                 ),
                 Text(
                   format.format(budget.budget), 
@@ -354,7 +514,6 @@ class BudgetDetailScreen extends StatelessWidget {
                      color: AppColors.textPrimary, 
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
-                    fontFamily: 'Inter',
                   ),
                 ),
               ],
@@ -378,7 +537,7 @@ class BudgetDetailScreen extends StatelessWidget {
           children: [
             Icon(icon, color: color, size: 16),
             const SizedBox(width: AppSpacing.xs),
-            Text(label, style: TextStyle(color: textColor.withValues(alpha: 0.7), fontFamily: 'Inter')),
+            Text(label, style: TextStyle(color: textColor.withValues(alpha: 0.7))),
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
@@ -388,7 +547,6 @@ class BudgetDetailScreen extends StatelessWidget {
             color: textColor,
             fontWeight: FontWeight.bold,
             fontSize: 16,
-            fontFamily: 'Inter',
           ),
         ),
       ],
@@ -405,7 +563,7 @@ class BudgetDetailScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Edit Budget', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold)),
+          title: const Text('Edit Budget', style: TextStyle(fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -452,10 +610,10 @@ class BudgetDetailScreen extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary, fontFamily: 'Inter')),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
             ),
             ElevatedButton(
-              child: const Text('Update', style: TextStyle(fontFamily: 'Inter')),
+              child: const Text('Update'),
               onPressed: () async {
                 final newName = nameController.text.trim();
                 final newBudget = double.tryParse(budgetController.text) ?? 0.0;
@@ -464,17 +622,17 @@ class BudgetDetailScreen extends StatelessWidget {
                   final confirm = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => AlertDialog(
-                      title: const Text('Confirm Update', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold)),
-                      content: const Text('Are you sure you want to update the budget details?', style: TextStyle(fontFamily: 'Inter')),
+                      title: const Text('Confirm Update', style: TextStyle(fontWeight: FontWeight.bold)),
+                      content: const Text('Are you sure you want to update the budget details?'),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary, fontFamily: 'Inter')),
+                          child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
                         ),
                         TextButton(
                           onPressed: () => Navigator.pop(ctx, true),
                           style: TextButton.styleFrom(foregroundColor: AppColors.primary),
-                          child: const Text('Confirm', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold)),
+                          child: const Text('Confirm', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -482,7 +640,7 @@ class BudgetDetailScreen extends StatelessWidget {
 
                   if (confirm == true) {
                     Provider.of<BudgetProvider>(context, listen: false).updateBudget(
-                      budgetId, 
+                      widget.budgetId, // Use widget.budgetId
                       name: newName, 
                       budgetAmount: newBudget, 
                       currency: selectedCurrencyCode
@@ -502,23 +660,80 @@ class BudgetDetailScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Budget?', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold)),
-        content: const Text('This will delete all transactions for this budget. This action cannot be undone.', style: TextStyle(fontFamily: 'Inter')),
+        title: const Text('Delete Budget?', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('This will delete all transactions for this budget. This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary, fontFamily: 'Inter')),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
           ),
           TextButton(
             onPressed: () {
-              provider.deleteBudget(budgetId);
+              provider.deleteBudget(widget.budgetId); // Use widget.budgetId
               Navigator.pop(ctx); 
             },
             style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-            child: const Text('Delete', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold)),
+            child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildBudgetStatusMessage(BuildContext context, Budget budget) {
+    if (budget.balance < 0) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.danger.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: AppColors.danger),
+            const SizedBox(width: AppSpacing.sm),
+            const Expanded(
+              child: Text(
+                'You have exceeded your budget!',
+                style: TextStyle(
+                  color: AppColors.danger,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (budget.balance == 0 && budget.budget > 0) {
+       return Container(
+        margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.accent.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline, color: AppColors.accent),
+            const SizedBox(width: AppSpacing.sm),
+            const Expanded(
+              child: Text(
+                'You have reached your budget limit!',
+                style: TextStyle(
+                  color: AppColors.accent, 
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 }

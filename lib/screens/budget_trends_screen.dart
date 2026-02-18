@@ -124,7 +124,7 @@ class _BudgetTrendsScreenState extends State<BudgetTrendsScreen> {
         ),
         title: Text(
           '${widget.budget.name} Trends',
-          style: const TextStyle(color: AppColors.textPrimary, fontFamily: 'Inter', fontWeight: FontWeight.bold),
+          style: const TextStyle(color: AppColors.textPrimary,  fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
       ),
@@ -143,7 +143,7 @@ class _BudgetTrendsScreenState extends State<BudgetTrendsScreen> {
                 children: [
                    const Text(
                     'Balance History',
-                    style: TextStyle(color: AppColors.textSecondary, fontFamily: 'Inter', fontSize: 16),
+                    style: TextStyle(color: AppColors.textSecondary,  fontSize: 16),
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   SizedBox(

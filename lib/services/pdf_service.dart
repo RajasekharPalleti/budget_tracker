@@ -17,8 +17,8 @@ class PdfService {
 
       try {
         // Try to load custom fonts from Google Fonts
-        fontRegular = await PdfGoogleFonts.notoSansRegular();
-        fontBold = await PdfGoogleFonts.notoSansBold();
+        fontRegular = await PdfGoogleFonts.interRegular();
+        fontBold = await PdfGoogleFonts.interBold();
         displayCurrency = currencySymbol; 
       } catch (e) {
         // Fallback to standard fonts if loading fails (e.g. offline)

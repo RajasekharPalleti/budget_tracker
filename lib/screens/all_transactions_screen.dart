@@ -66,7 +66,7 @@ class _AllTransactionsScreenState extends State<AllTransactionsScreen> {
           'All Transactions',
           style: TextStyle(
             color: AppColors.textPrimary,
-            fontFamily: 'Inter',
+            
             fontWeight: FontWeight.bold,
           ),
         ),

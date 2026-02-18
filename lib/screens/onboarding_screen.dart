@@ -59,7 +59,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   'Welcome to\nBudget Tracker',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontFamily: 'Inter',
+                    
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
                     color: AppColors.textPrimary,
@@ -70,7 +70,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   'Let\'s get to know you better.\nWhat should we call you?',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontFamily: 'Inter',
+                    
                     fontSize: 16,
                     color: AppColors.textSecondary,
                   ),
@@ -82,7 +82,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     controller: _nameController,
                     decoration: InputDecoration(
                       labelText: 'Your Name',
-                      hintText: 'e.g. John Doe',
+                      hintText: 'e.g. Rajasekhar',
                       prefixIcon: const Icon(Icons.person_outline, color: AppColors.textSecondary),
                       filled: true,
                       fillColor: AppColors.cardBackground,
@@ -103,7 +103,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       return null;
                     },
                     style: const TextStyle(
-                      fontFamily: 'Inter',
+                      
                       color: AppColors.textPrimary,
                     ),
                   ),
@@ -123,7 +123,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: const Text(
                     'Get Started',
                     style: TextStyle(
-                      fontFamily: 'Inter',
+                      
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
