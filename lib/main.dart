@@ -20,13 +20,16 @@ void main() async {
   ));
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-  await NotificationService().init();
-  
   final userProvider = UserProvider();
-  await userProvider.loadUserData();
-
   final budgetProvider = BudgetProvider();
-  await budgetProvider.loadData();
+
+  try {
+    await NotificationService().init();
+    await userProvider.loadUserData();
+    await budgetProvider.loadData();
+  } catch (e) {
+    debugPrint('Initialization failed: $e');
+  }
   
   runApp(
     MultiProvider(

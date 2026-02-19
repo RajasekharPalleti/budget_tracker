@@ -59,7 +59,12 @@ class _HomeScreenState extends State<HomeScreen> {
       _reminderTime = time;
     });
     final username = Provider.of<UserProvider>(context, listen: false).username;
+    
+    // Request permissions first to ensure Exact Alarm is allowed
+    await NotificationService().requestPermissions();
+    
     await NotificationService().scheduleDailyNotification(time, username);
+    
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Daily reminder set for ${time.format(context)}')),
@@ -120,7 +125,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Icon(Icons.camera_alt_rounded, color: Colors.blue),
                   ),
                   title: const Text('Take a Photo'),
-                  subtitle: const Text('Mobile only'),
                   onTap: () => Navigator.pop(context, ImageSource.camera),
                 ),
             ],
@@ -216,15 +220,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   ImageProvider? _getProfileImage(UserProvider user) {
-    // On web, prefer bytes (MemoryImage) over path
-    if (kIsWeb) {
-      if (user.profileImageBytes != null) {
-        return MemoryImage(user.profileImageBytes!);
-      }
-      return null;
+    // Priority 1: In-memory bytes (immediate update after picking / web default)
+    if (user.profileImageBytes != null) {
+      return MemoryImage(user.profileImageBytes!);
     }
-    if (user.profileImagePath.isEmpty) return null;
-    return FileImage(File(user.profileImagePath));
+    // Priority 2: File path (persisted data on mobile)
+    if (user.profileImagePath.isNotEmpty) {
+      // kIsWeb check is technically redundant if we ensure path is empty on web, 
+      // but good for safety.
+      if (!kIsWeb) {
+        return FileImage(File(user.profileImagePath));
+      }
+    }
+    return null;
   }
 
   @override
@@ -243,6 +251,45 @@ class _HomeScreenState extends State<HomeScreen> {
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
         backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent, // Or AppColors.background if you want solid
+          elevation: 0,
+          leading: Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu, color: AppColors.textPrimary),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ),
+          ),
+          title: const Text(
+            'Budget Tracker',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          centerTitle: true,
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.md),
+              child: GestureDetector(
+                onTap: _pickImage,
+                child: Consumer<UserProvider>(
+                  builder: (context, user, child) {
+                    final imageProvider = _getProfileImage(user);
+                    return CircleAvatar(
+                      radius: 18,
+                      backgroundColor: AppColors.primary.withOpacity(0.1),
+                      backgroundImage: imageProvider,
+                      child: imageProvider == null
+                          ? const Icon(Icons.person, size: 20, color: AppColors.primary)
+                          : null,
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
         drawer: Drawer(
           child: ListView(
             padding: EdgeInsets.zero,
@@ -283,46 +330,14 @@ class _HomeScreenState extends State<HomeScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(height: MediaQuery.of(context).padding.top + AppSpacing.md),
+                SizedBox(height: AppSpacing.md), // Reduced top padding since AppBar takes space
                 
-                // Header
+                // Greeting Header (Modified for Body)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Profile Avatar
-                      Builder(
-                        builder: (context) => GestureDetector(
-                          onTap: () => Scaffold.of(context).openDrawer(),
-                          child: Consumer<UserProvider>(
-                            builder: (context, user, child) {
-                                final imageProvider = _getProfileImage(user);
-                              return Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.primary.withValues(alpha: 0.2),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: CircleAvatar(
-                                  radius: 26,
-                                  backgroundColor: AppColors.primary.withValues(alpha: 0.15),
-                                  backgroundImage: imageProvider,
-                                  child: imageProvider == null
-                                      ? const Icon(Icons.person_rounded, size: 28, color: AppColors.primary)
-                                      : null,
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
                       // Greeting Text
                       Expanded(
                         child: Column(
@@ -334,7 +349,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   greeting,
                                   style: TextStyle(
                                     color: AppColors.textSecondary,
-                                    fontSize: 13,
+                                    fontSize: 14, // Slightly larger
                                     fontWeight: FontWeight.w500,
                                     letterSpacing: 0.3,
                                   ),
@@ -342,16 +357,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const SizedBox(width: 4),
                                 Text(
                                   _getGreetingEmoji(),
-                                  style: const TextStyle(fontSize: 14),
+                                  style: const TextStyle(fontSize: 16),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 4), // Proper spacing
                             Text(
                               Provider.of<UserProvider>(context).username,
                               style: const TextStyle(
                                 color: AppColors.textPrimary,
-                                fontSize: 24,
+                                fontSize: 28, // Prominent
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: -0.5,
                               ),
@@ -363,12 +378,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       // Add Budget Button
                       Container(
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
+                          color: AppColors.primary.withOpacity(0.1),
                           shape: BoxShape.circle,
                         ),
                         child: IconButton(
                           icon: const Icon(Icons.add, color: AppColors.primary),
                           onPressed: () => _showAddBudgetDialog(context),
+                          tooltip: 'Add Budget',
                         ),
                       ),
                     ],

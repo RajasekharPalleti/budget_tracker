@@ -17,15 +17,24 @@ class PdfService {
 
       try {
         // Try to load custom fonts from Google Fonts
-        fontRegular = await PdfGoogleFonts.interRegular();
-        fontBold = await PdfGoogleFonts.interBold();
+        // Roboto has excellent glyph coverage (including Rupee)
+        fontRegular = await PdfGoogleFonts.robotoRegular();
+        fontBold = await PdfGoogleFonts.robotoBold();
         displayCurrency = currencySymbol; 
       } catch (e) {
-        // Fallback to standard fonts if loading fails (e.g. offline)
-        print('Error loading fonts: $e');
-        fontRegular = pw.Font.helvetica();
-        fontBold = pw.Font.helveticaBold();
-        displayCurrency = '${budget.currency} '; 
+        print('Error loading Roboto fonts: $e');
+        try {
+           // Fallback 1: OpenSans
+           fontRegular = await PdfGoogleFonts.openSansRegular();
+           fontBold = await PdfGoogleFonts.openSansBold();
+           displayCurrency = currencySymbol;
+        } catch (e2) {
+           // Fallback 2: Standard fonts (likely no currency symbol support)
+           print('Error loading fallback fonts: $e2');
+           fontRegular = pw.Font.helvetica();
+           fontBold = pw.Font.helveticaBold();
+           displayCurrency = '${budget.currency} '; 
+        }
       }
 
       pdf.addPage(

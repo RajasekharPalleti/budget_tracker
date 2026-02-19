@@ -13,12 +13,18 @@ class BudgetProvider with ChangeNotifier {
   static const String _storageKey = 'budget_data';
 
   Future<void> loadData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? data = prefs.getString(_storageKey);
-    if (data != null) {
-      final List<dynamic> jsonList = json.decode(data);
-      _budgets = jsonList.map((json) => Budget.fromJson(json)).toList();
-      await _cleanupOldTransactions(); 
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? data = prefs.getString(_storageKey);
+      if (data != null) {
+        final List<dynamic> jsonList = json.decode(data);
+        _budgets = jsonList.map((json) => Budget.fromJson(json)).toList();
+        await _cleanupOldTransactions(); 
+      }
+    } catch (e) {
+      debugPrint('BudgetProvider loadData failed: $e');
+      // Initialize with empty list on error
+      _budgets = [];
     }
     notifyListeners();
   }

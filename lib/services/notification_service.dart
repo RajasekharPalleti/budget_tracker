@@ -2,6 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:flutter/material.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -16,29 +17,36 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   Future<void> init() async {
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    try {
+      const AndroidInitializationSettings initializationSettingsAndroid =
+          AndroidInitializationSettings('@mipmap/launcher_icon');
 
-    const DarwinInitializationSettings initializationSettingsDarwin =
-        DarwinInitializationSettings(
-      requestSoundPermission: false,
-      requestBadgePermission: false,
-      requestAlertPermission: false,
-    );
+      const DarwinInitializationSettings initializationSettingsDarwin =
+          DarwinInitializationSettings(
+        requestSoundPermission: false,
+        requestBadgePermission: false,
+        requestAlertPermission: false,
+      );
 
-    const InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsDarwin,
-    );
+      const InitializationSettings initializationSettings = InitializationSettings(
+        android: initializationSettingsAndroid,
+        iOS: initializationSettingsDarwin,
+      );
 
-    await flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse details) async {
-        // Handle notification tap
-      },
-    );
+      await flutterLocalNotificationsPlugin.initialize(
+        initializationSettings,
+        onDidReceiveNotificationResponse: (NotificationResponse details) async {
+          // Handle notification tap
+        },
+      );
 
-    tz.initializeTimeZones();
+      tz.initializeTimeZones();
+      final String timeZoneName = (await FlutterTimezone.getLocalTimezone()).identifier;
+      tz.setLocalLocation(tz.getLocation(timeZoneName));
+      debugPrint('NotificationService initialized with timezone: $timeZoneName');
+    } catch (e) {
+      debugPrint('NotificationService init failed: $e');
+    }
   }
 
   Future<void> requestPermissions() async {
@@ -51,18 +59,25 @@ class NotificationService {
           sound: true,
         );
         
-    await flutterLocalNotificationsPlugin
+    
+    final androidImplementation = flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidImplementation != null) {
+      await androidImplementation.requestNotificationsPermission();
+      // Android 12+ requires specific permission for exact alarms
+      await androidImplementation.requestExactAlarmsPermission();
+    }
   }
 
   Future<void> scheduleDailyNotification(TimeOfDay time, String username) async {
+    final scheduledDate = _nextInstanceOfTime(time);
     await flutterLocalNotificationsPlugin.zonedSchedule(
       0, // ID
       'Expense Reminder',
       'Hey $username, Did you forget to log today’s expenses? Don’t let them slip away!',
-      _nextInstanceOfTime(time),
+      scheduledDate,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'daily_expense_reminder_channel',
@@ -70,6 +85,8 @@ class NotificationService {
           channelDescription: 'Reminds you to add daily expenses',
           importance: Importance.max,
           priority: Priority.high,
+          ticker: 'ticker',
+          icon: '@mipmap/launcher_icon',
         ),
         iOS: DarwinNotificationDetails(),
       ),

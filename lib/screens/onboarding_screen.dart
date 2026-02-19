@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../theme/design_system.dart';
+import '../services/notification_service.dart';
 import 'home_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -28,6 +29,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
       
       await userProvider.setUsername(name);
+      
+      // Request notifications/alarms permissions on first meaningful interaction
+      await NotificationService().requestPermissions();
+      
       await userProvider.completeOnboarding();
 
       if (mounted) {
